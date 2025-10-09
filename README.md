@@ -1,6 +1,6 @@
 # AutoHeal
 
-Automatic healing addon for Vanilla WoW (Turtle WoW 1.12) with intelligent target prioritization and line-of-sight awareness.
+Automatic healing addon for Vanilla WoW with intelligent target prioritization and line-of-sight awareness.
 
 ## Features
 
@@ -66,8 +66,6 @@ When **Self-Preservation is enabled** and your HP falls below the threshold:
 - All other targets are ignored during emergency mode
 - Returns to normal priority once you're above the threshold
 
-## Technical Details
-
 ### Blacklist System
 
 Prevents spam-casting by tracking recent casts:
@@ -108,9 +106,6 @@ The addon includes a default "reju" preset:
 ## Compatibility
 
 - **Vanilla WoW 1.12** (Turtle WoW)
+- Needs UnitXP Mod for Distance and LOS calculation
 - Works with pfUI raid frames
-- Compatible with macro casting
-Based on proven patterns from:
-- **QuickHeal**: Buff detection and target prioritization
-- **AUTO-REJU macro**: Blacklist system and GCD-based success detection
-- **pfUI-raiddistance**: Line of sight and distance checking
+- Compatible with macros
