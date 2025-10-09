@@ -1,0 +1,402 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/">
+
+    <!-- Main Config Frame -->
+    <Frame name="AutoHealConfigFrame" parent="UIParent" hidden="true" frameStrata="DIALOG" toplevel="true" enableMouse="true" movable="true">
+        <Size>
+            <AbsDimension x="480" y="520"/>
+        </Size>
+        <Anchors>
+            <Anchor point="CENTER"/>
+        </Anchors>
+        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" tile="true">
+            <BackgroundInsets>
+                <AbsInset left="11" right="12" top="12" bottom="11"/>
+            </BackgroundInsets>
+            <TileSize>
+                <AbsValue val="32"/>
+            </TileSize>
+            <EdgeSize>
+                <AbsValue val="32"/>
+            </EdgeSize>
+        </Backdrop>
+
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="$parentTitle" inherits="GameFontNormal" text="AutoHeal Configuration">
+                    <Anchors>
+                        <Anchor point="TOP">
+                            <Offset>
+                                <AbsDimension x="0" y="-16"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Preset List Label -->
+                <FontString name="$parentPresetsLabel" inherits="GameFontNormalSmall" text="Presets:">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-50"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Current Preset Label -->
+                <FontString name="$parentCurrentPreset" inherits="GameFontHighlight" text="Select a preset">
+                    <Anchors>
+                        <Anchor point="TOP">
+                            <Offset>
+                                <AbsDimension x="0" y="-150"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Spell Name Label -->
+                <FontString name="$parentSpellLabel" inherits="GameFontNormalSmall" text="Spell Name:">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-185"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Health Threshold Label -->
+                <FontString name="$parentHealthLabel" inherits="GameFontNormalSmall" text="Health Threshold (0-100%):">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-227"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Block Time Label -->
+                <FontString name="$parentBlockLabel" inherits="GameFontNormalSmall" text="Block Time (sec):">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-269"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Max Range Label -->
+                <FontString name="$parentRangeLabel" inherits="GameFontNormalSmall" text="Max Range (yards):">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-311"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Self-Preservation Checkbox Label -->
+                <FontString name="$parentSelfPreservationLabel" inherits="GameFontNormalSmall" text="Emergency Self-Heal:">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-358"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Self Threshold Label -->
+                <FontString name="$parentSelfThresholdLabel" inherits="GameFontNormalSmall" text="Emergency HP %:">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-395"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Buff Info Label -->
+                <FontString name="$parentBuffLabel" inherits="GameFontNormalSmall" text="Buff Detected:">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="20" y="-437"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+
+                <!-- Buff Info Display (read-only) -->
+                <FontString name="$parentBuffInfo" inherits="GameFontHighlightSmall" text="Auto-detected">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="220" y="-437"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                    <Color r="0.5" g="1" b="0.5"/>
+                </FontString>
+            </Layer>
+        </Layers>
+
+        <Frames>
+            <!-- Spell Name EditBox -->
+            <EditBox name="$parentSpellEdit" autoFocus="false" historyLines="0">
+                <Size>
+                    <AbsDimension x="200" y="32"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-190"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="5" right="5" top="5" bottom="5"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Backdrop>
+                <FontString inherits="ChatFontNormal">
+                    <Color r="1" g="1" b="1"/>
+                </FontString>
+                <Scripts>
+                    <OnLoad>
+                        this:SetTextInsets(10, 10, 0, 0);
+                    </OnLoad>
+                    <OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+                    <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Health Threshold EditBox -->
+            <EditBox name="$parentHealthEdit" autoFocus="false" historyLines="0" numeric="true">
+                <Size>
+                    <AbsDimension x="100" y="32"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-232"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="5" right="5" top="5" bottom="5"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Backdrop>
+                <FontString inherits="ChatFontNormal">
+                    <Color r="1" g="1" b="1"/>
+                </FontString>
+                <Scripts>
+                    <OnLoad>
+                        this:SetTextInsets(10, 10, 0, 0);
+                    </OnLoad>
+                    <OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+                    <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Block Time EditBox -->
+            <EditBox name="$parentBlockEdit" autoFocus="false" historyLines="0" numeric="true">
+                <Size>
+                    <AbsDimension x="100" y="32"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-274"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="5" right="5" top="5" bottom="5"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Backdrop>
+                <FontString inherits="ChatFontNormal">
+                    <Color r="1" g="1" b="1"/>
+                </FontString>
+                <Scripts>
+                    <OnLoad>
+                        this:SetTextInsets(10, 10, 0, 0);
+                    </OnLoad>
+                    <OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+                    <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Max Range EditBox -->
+            <EditBox name="$parentRangeEdit" autoFocus="false" historyLines="0" numeric="true">
+                <Size>
+                    <AbsDimension x="100" y="32"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-316"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="5" right="5" top="5" bottom="5"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Backdrop>
+                <FontString inherits="ChatFontNormal">
+                    <Color r="1" g="1" b="1"/>
+                </FontString>
+                <Scripts>
+                    <OnLoad>
+                        this:SetTextInsets(10, 10, 0, 0);
+                    </OnLoad>
+                    <OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+                    <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Self-Preservation Checkbox -->
+            <CheckButton name="$parentSelfPreservationCheck">
+                <Size>
+                    <AbsDimension x="24" y="24"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-360"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+                <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+                <HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+                <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+            </CheckButton>
+
+            <!-- Self Threshold EditBox -->
+            <EditBox name="$parentSelfThresholdEdit" autoFocus="false" historyLines="0" numeric="true">
+                <Size>
+                    <AbsDimension x="100" y="32"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="220" y="-400"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="5" right="5" top="5" bottom="5"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Backdrop>
+                <FontString inherits="ChatFontNormal">
+                    <Color r="1" g="1" b="1"/>
+                </FontString>
+                <Scripts>
+                    <OnLoad>
+                        this:SetTextInsets(10, 10, 0, 0);
+                    </OnLoad>
+                    <OnEscapePressed>this:ClearFocus();</OnEscapePressed>
+                    <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
+                </Scripts>
+            </EditBox>
+
+            <!-- Save Button -->
+            <Button name="$parentSaveButton" inherits="GameMenuButtonTemplate" text="Save">
+                <Size>
+                    <AbsDimension x="100" y="25"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="BOTTOM">
+                        <Offset>
+                            <AbsDimension x="-60" y="20"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>AutoHeal_SavePreset();</OnClick>
+                </Scripts>
+            </Button>
+
+            <!-- Close Button -->
+            <Button name="$parentCloseButton" inherits="GameMenuButtonTemplate" text="Close">
+                <Size>
+                    <AbsDimension x="100" y="25"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="BOTTOM">
+                        <Offset>
+                            <AbsDimension x="60" y="20"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>AutoHealConfigFrame:Hide();</OnClick>
+                </Scripts>
+            </Button>
+
+            <!-- New Preset Button -->
+            <Button name="$parentNewButton" inherits="GameMenuButtonTemplate" text="New">
+                <Size>
+                    <AbsDimension x="80" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPRIGHT">
+                        <Offset>
+                            <AbsDimension x="-20" y="-68"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>AutoHeal_NewPreset();</OnClick>
+                </Scripts>
+            </Button>
+
+            <!-- Delete Preset Button -->
+            <Button name="$parentDeleteButton" inherits="GameMenuButtonTemplate" text="Delete">
+                <Size>
+                    <AbsDimension x="80" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPRIGHT">
+                        <Offset>
+                            <AbsDimension x="-20" y="-95"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>AutoHeal_DeletePreset();</OnClick>
+                </Scripts>
+            </Button>
+        </Frames>
+
+        <Scripts>
+            <OnLoad>
+                AutoHeal_ConfigOnLoad();
+            </OnLoad>
+            <OnShow>
+                AutoHeal_ConfigOnShow();
+            </OnShow>
+            <OnMouseDown>
+                this:StartMoving();
+            </OnMouseDown>
+            <OnMouseUp>
+                this:StopMovingOrSizing();
+            </OnMouseUp>
+        </Scripts>
+    </Frame>
+
+</Ui>

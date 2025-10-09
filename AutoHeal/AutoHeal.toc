@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: AutoHeal
+## Author: AutoHeal
+## Notes: Automatic healing addon for raid healing
+## SavedVariablesPerCharacter: AutoHealVariables
+
+AutoHeal.lua
+AutoHealConfig.xml
