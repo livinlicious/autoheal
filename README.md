@@ -23,18 +23,16 @@ Automatic healing addon for Vanilla WoW (Turtle WoW 1.12) with intelligent targe
 
 ### Commands
 
-- `/autoheal` or `/ah` - Cast using default "reju" preset
 - `/autoheal config` - Open configuration window
 - `/autoheal <preset>` - Cast using specific preset (case-insensitive)
 
 ### Macro Example
 
 ```
-/script AutoHeal_Cast("reju")
-/cast Healing Touch
+/autoheal Reju
 ```
 
-The addon will attempt to heal the most appropriate target. If no valid targets are found (or all out of range/LOS), the macro continues to the next line.
+The addon will attempt to heal the most appropriate target. If no valid targets are found (or all out of range/LOS), the macro continues to the next best target, or does nothing.
 
 ## Configuration
 
@@ -44,22 +42,22 @@ Each preset can be configured with:
 
 - **Spell Name**: The spell to cast (e.g., "Rejuvenation", "Regrowth")
 - **Health Threshold**: Heal targets below this HP% (0-100)
-- **Block Time**: Seconds to wait before re-casting on same target (handles invisible buff delay)
-- **Max Range**: Maximum range in yards (40 recommended for most spells)
-- **Self-Preservation Enabled**: Enable emergency self-heal mode
+- **Block Time**: Seconds to wait before re-casting on same target (handles 32 buff limit in vanilla WOW; buffs 33-64 are invisible)
+- **Max Range**: Maximum range in yards (default 40 recommended for most spells, can be configured)
+- **Self-Preservation Enabled**: Enable emergency self-heal mode, to prioritize heal on yourself
 - **Self-Preservation Threshold**: HP% at which to prioritize self-healing (0-100)
 
 ### Buff Detection
 
-Buff textures are **automatically detected** from your spellbook. The addon reads the spell icon and uses it to check if buffs are already applied. No manual configuration needed.
+Buff textures are **automatically detected** from your spellbook. The addon reads the spell icon and uses it to check if buffs are already applied.
 
 ## Healing Priority Logic
 
 ### Normal Mode
 
-1. **Mouseover** - Highest priority (intentional healing)
-2. **Current Target** - Second priority (intentional healing)
-3. **Party/Raid/Self** - Sorted by lowest HP% first
+1. **Mouseover** - Highest priority
+2. **Current Target** - Second priority (if mouseover target is not under %HP)
+3. **Party/Raid/Self** - if 1+2 are over %HP, Healing lowest %HP in Raid first
 
 ### Emergency Self-Preservation Mode
 
@@ -75,7 +73,6 @@ When **Self-Preservation is enabled** and your HP falls below the threshold:
 Prevents spam-casting by tracking recent casts:
 - After successfully casting on a target, they're blacklisted for `blockTime` seconds
 - Handles the "invisible buff" problem where buffs appear on your client but not immediately on others
-- Default: 12 seconds (matches typical HoT durations)
 
 ### GCD Detection
 
@@ -112,11 +109,7 @@ The addon includes a default "reju" preset:
 
 - **Vanilla WoW 1.12** (Turtle WoW)
 - Works with pfUI raid frames
-- Compatible with macro spam-casting
-- No conflicts with other healing addons
-
-## Credits
-
+- Compatible with macro casting
 Based on proven patterns from:
 - **QuickHeal**: Buff detection and target prioritization
 - **AUTO-REJU macro**: Blacklist system and GCD-based success detection
