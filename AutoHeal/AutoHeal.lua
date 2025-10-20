@@ -16,7 +16,8 @@ local DAHV = {
         maxRange = 40,
         selfPreservationThreshold = 60,
         selfPreservationEnabled = true,
-        requiresBuff = ""  -- empty = normal buff spell, filled = consume spell that requires this buff
+        requiresBuff = "",  -- empty = normal buff spell, filled = consume spell that requires this buff
+        ignoreBuffCheck = false  -- true = rely only on blacklist timer, false = check for buff presence
     }
 }
 
@@ -332,11 +333,15 @@ local function NeedsHeal(unit, preset)
         return false, nil;
     else
         -- NORMAL BUFF SPELL (e.g., Rejuvenation) - don't cast if buff already visible
-        local hasBuff = preset.buffTexture and UnitHasBuff(unit, preset.buffTexture);
-        if hasBuff then
-            -- Buff visible, clear blacklist (buff is real)
-            ClearTargetBlacklist(unitName, preset.spell);
-            return false, nil;
+
+        -- Check buff presence (unless ignoreBuffCheck is enabled)
+        if not preset.ignoreBuffCheck then
+            local hasBuff = preset.buffTexture and UnitHasBuff(unit, preset.buffTexture);
+            if hasBuff then
+                -- Buff visible, clear blacklist (buff is real)
+                ClearTargetBlacklist(unitName, preset.spell);
+                return false, nil;
+            end
         end
 
         -- Check blacklist (handles the invisible buff problem)
@@ -759,11 +764,17 @@ function AutoHeal_SelectPreset(name)
         AutoHealConfigFrameSpellRankEdit:SetText(tostring(preset.spellRank or 0));
         AutoHealConfigFrameRequiresBuffEdit:SetText(preset.requiresBuff or "");
 
-        -- Set checkbox state
+        -- Set checkbox states
         if preset.selfPreservationEnabled then
             AutoHealConfigFrameSelfPreservationCheck:SetChecked(1);
         else
             AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
+        end
+
+        if preset.ignoreBuffCheck then
+            AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(1);
+        else
+            AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(nil);
         end
 
         -- Update list highlighting
@@ -816,8 +827,9 @@ function AutoHeal_SavePreset()
     end
     preset.selfPreservationThreshold = selfThreshold;
 
-    -- Get checkbox state
+    -- Get checkbox states
     preset.selfPreservationEnabled = (AutoHealConfigFrameSelfPreservationCheck:GetChecked() == 1);
+    preset.ignoreBuffCheck = (AutoHealConfigFrameIgnoreBuffCheckCheck:GetChecked() == 1);
 
     -- Get requires buff field
     local requiresBuffText = AutoHealConfigFrameRequiresBuffEdit:GetText();
@@ -903,6 +915,7 @@ function AutoHeal_DeletePreset()
             AutoHealConfigFrameSelfThresholdEdit:SetText("");
             AutoHealConfigFrameSpellRankEdit:SetText("");
             AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
+            AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(nil);
             AutoHealConfigFrameRequiresBuffEdit:SetText("");
             writeLine("AutoHeal: Preset deleted");
         end,
@@ -1004,6 +1017,7 @@ local function SlashCommandHandler(msg)
                     AutoHealConfigFrameSelfThresholdEdit:SetText("");
                     AutoHealConfigFrameSpellRankEdit:SetText("");
                     AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
+                    AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(nil);
                     AutoHealConfigFrameRequiresBuffEdit:SetText("");
                 end
                 writeLine("AutoHeal: All configuration deleted. Fresh start!");

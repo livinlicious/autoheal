@@ -82,6 +82,9 @@
                 <FontString name="$parentSelfThresholdLabel" inherits="GameFontNormalSmall" text="Emergency Health%:">
                     <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-363"/></Offset></Anchor></Anchors>
                 </FontString>
+                <FontString name="$parentIgnoreBuffCheckLabel" inherits="GameFontNormalSmall" text="Ignore Buff Check:">
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-395"/></Offset></Anchor></Anchors>
+                </FontString>
             </Layer>
         </Layers>
 
@@ -307,6 +310,23 @@
                     <OnLeave>GameTooltip:Hide();</OnLeave>
                 </Scripts>
             </EditBox>
+
+            <CheckButton name="$parentIgnoreBuffCheckCheck">
+                <Size><AbsDimension x="24" y="24"/></Size>
+                <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="300" y="-397"/></Offset></Anchor></Anchors>
+                <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+                <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+                <HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+                <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+                <Scripts>
+                    <OnEnter>
+                        GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
+                        GameTooltip:SetText("Multiple Spells can have the same Buff Icon. Spell detection is then based on Blacklist Timer, knowing when cast was done until cooldown is over.");
+                        GameTooltip:Show();
+                    </OnEnter>
+                    <OnLeave>GameTooltip:Hide();</OnLeave>
+                </Scripts>
+            </CheckButton>
 
             <!-- Buttons -->
             <Button name="$parentNewButton" inherits="GameMenuButtonTemplate" text="New">
