@@ -43,13 +43,8 @@ Automatic healing addon for Vanilla WoW (Turtle WoW 1.12) with intelligent targe
 **Chained Presets (Swiftmend if possible, otherwise Rejuvenation):**
 ```
 /autoheal swift reju
-```
-
-**Multiple Heal Ranks:**
-```
 /autoheal Heal1 Heal2 Heal3 Heal4
 ```
-
 The addon will attempt to heal the most appropriate target. If no valid targets are found (or all out of range/LOS), the macro continues to the next preset.
 
 ## Configuration
@@ -73,14 +68,9 @@ Each preset can be configured with:
 
 Per-preset priority player list with two sorting modes:
 
-- **All Equal**: All priority targets are treated equally and healed based on lowest HP%
-- **By Order**: Priority targets are healed strictly from top to bottom
+- **All Equal**: All priority targets are treated equally and healed based on lowest HP% first
+- **By Order**: Priority targets are healed strictly from top to bottom if condition for healing is met, otherwise next in line is healed
 
-Controls:
-- **Add Target**: Adds your current target to the priority list
-- **Clear**: Clears the entire priority list
-- **Up/Down Arrows**: Reorder players in the list
-- **X Button**: Remove specific player from the list
 
 ## Healing Priority Logic
 
@@ -211,4 +201,4 @@ The addon starts with no presets. Use `/autoheal config` to create your first pr
 
 - **Vanilla WoW 1.12** (Turtle WoW)
 - Works with pfUI raid frames
-- Compatible with macros
+- Compatible with macros (/autoheal preset1 preset2 preset3 ...)
