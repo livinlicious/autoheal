@@ -5,23 +5,25 @@
 AutoHealVariables = {};
 local AHV = {};
 
--- Default values with preset system
+-- Default values for new presets
 local DAHV = {
-    Presets = {
-        reju = {
-            name = "reju",
-            spell = "Rejuvenation",
-            healthThreshold = 90,
-            blockTime = 12,
-            maxRange = 40,
-            selfPreservationThreshold = 60,
-            selfPreservationEnabled = true
-        }
+    PresetDefaults = {
+        spell = "Rejuvenation",
+        spellRank = 0,  -- 0 = use highest rank
+        healthThreshold = 90,
+        blockTime = 12,
+        cooldown = 0,  -- spell cooldown in seconds (0 = no cooldown)
+        maxRange = 40,
+        selfPreservationThreshold = 60,
+        selfPreservationEnabled = true,
+        requiresBuff = ""  -- empty = normal buff spell, filled = consume spell that requires this buff
     }
 }
 
--- Blacklist tracking (handles invisible buff problem)
-local BlacklistTimes = {};
+-- Enhanced target state tracking (handles invisible buff problem)
+-- Tracks by spell name, not preset name
+local TargetStates = {};  -- [targetName][spellName] = { lastCast, duration }
+local SpellCooldowns = {};  -- [spellName] = { lastCast, cooldown }
 local GCDFrame = nil;
 
 -- Helper function to write to chat
@@ -173,31 +175,116 @@ local function UnitHasBuff(unit, buffTexture)
     return false;
 end
 
--- Check if target should be skipped due to blacklist (from AUTO-REJU macro)
-local function ShouldSkipTarget(unitName, blockTime)
-    if not unitName then
-        return true;
+-- Get or create target state for a spell
+local function GetSpellState(unitName, spellName)
+    if not unitName or not spellName then
+        return nil;
     end
 
-    local lastCastTime = BlacklistTimes[unitName];
-    if lastCastTime then
-        local currentTime = GetTime();
-        local elapsed = currentTime - lastCastTime;
-        if elapsed < blockTime then
-            return true;
-        else
-            -- Clear expired blacklist
-            BlacklistTimes[unitName] = nil;
-        end
+    if not TargetStates[unitName] then
+        TargetStates[unitName] = {};
     end
-    return false;
+
+    if not TargetStates[unitName][spellName] then
+        TargetStates[unitName][spellName] = {
+            lastCast = 0,
+            duration = 0
+        };
+    end
+
+    return TargetStates[unitName][spellName];
+end
+
+-- Check if spell is on cooldown
+local function IsSpellOnCooldown(spellName, cooldown)
+    if not spellName or cooldown == 0 then
+        return false;
+    end
+
+    if not SpellCooldowns[spellName] then
+        return false;
+    end
+
+    local elapsed = GetTime() - SpellCooldowns[spellName].lastCast;
+    return elapsed < cooldown;
+end
+
+-- Update spell cooldown
+local function UpdateSpellCooldown(spellName, cooldown)
+    if not spellName or cooldown == 0 then
+        return;
+    end
+
+    SpellCooldowns[spellName] = {
+        lastCast = GetTime(),
+        cooldown = cooldown
+    };
+end
+
+-- Check if target is blacklisted for a spell
+local function IsTargetBlacklisted(unitName, spellName, duration)
+    if not unitName or not spellName or duration == 0 then
+        return false;
+    end
+
+    local state = GetSpellState(unitName, spellName);
+    if not state then
+        return false;
+    end
+
+    local elapsed = GetTime() - state.lastCast;
+    return elapsed < duration;
+end
+
+-- Update target blacklist after casting
+local function UpdateTargetBlacklist(unitName, spellName, duration)
+    if not unitName or not spellName then
+        return;
+    end
+
+    local state = GetSpellState(unitName, spellName);
+    if state then
+        state.lastCast = GetTime();
+        state.duration = duration;
+    end
+end
+
+-- Clear target blacklist for a spell (after buff consumed)
+local function ClearTargetBlacklist(unitName, spellName)
+    if not unitName or not spellName then
+        return;
+    end
+
+    local state = GetSpellState(unitName, spellName);
+    if state then
+        state.lastCast = 0;
+        state.duration = 0;
+    end
 end
 
 -- Check if unit needs healing based on preset configuration
+-- Returns: needsHeal (bool), visibleBuffs (table of spell names that were visible)
 local function NeedsHeal(unit, preset)
     -- Check if unit is healable (includes LOS and distance check from pfUI-raiddistance)
     if not UnitIsHealable(unit, preset.maxRange) then
-        return false;
+        return false, nil;
+    end
+
+    local unitName = UnitName(unit);
+    if not unitName then
+        return false, nil;
+    end
+
+    -- Check health threshold first
+    local health = UnitHealth(unit);
+    local maxHealth = UnitHealthMax(unit);
+    if health == 0 or maxHealth == 0 then
+        return false, nil;
+    end
+
+    local healthPct = (health / maxHealth) * 100;
+    if healthPct > preset.healthThreshold then
+        return false, nil;
     end
 
     -- Auto-detect buff texture from spell if not already cached
@@ -205,30 +292,60 @@ local function NeedsHeal(unit, preset)
         preset.buffTexture = GetBuffTextureForSpell(preset.spell);
     end
 
-    -- Check if buff is visible on unit
-    if preset.buffTexture and UnitHasBuff(unit, preset.buffTexture) then
-        return false;
-    end
+    -- Check if this is a consume spell (has requiresBuff set)
+    if preset.requiresBuff and preset.requiresBuff ~= "" then
+        -- CONSUME SPELL (e.g., Swiftmend) - needs at least one required buff present
 
-    local unitName = UnitName(unit);
-    if not unitName then
-        return false;
-    end
+        -- Parse required buffs (comma-separated)
+        local requiredBuffs = {};
+        for buffName in string.gfind(preset.requiresBuff, "[^,]+") do
+            local trimmed = string.gsub(buffName, "^%s*(.-)%s*$", "%1");
+            table.insert(requiredBuffs, trimmed);
+        end
 
-    -- Check blacklist (handles the invisible buff problem)
-    if ShouldSkipTarget(unitName, preset.blockTime) then
-        return false;
-    end
+        -- Check each required buff
+        local visibleBuffs = {};
+        local hasVisibleBuff = false;
+        local hasBlacklistedBuff = false;
 
-    -- Check health threshold
-    local health = UnitHealth(unit);
-    local maxHealth = UnitHealthMax(unit);
-    if health == 0 or maxHealth == 0 then
-        return false;
-    end
+        for _, buffName in ipairs(requiredBuffs) do
+            local buffTexture = GetBuffTextureForSpell(buffName);
+            if buffTexture then
+                local isVisible = UnitHasBuff(unit, buffTexture);
+                if isVisible then
+                    table.insert(visibleBuffs, buffName);
+                    hasVisibleBuff = true;
+                else
+                    -- Check if blacklisted (invisible but likely present)
+                    if IsTargetBlacklisted(unitName, buffName, preset.blockTime) then
+                        hasBlacklistedBuff = true;
+                    end
+                end
+            end
+        end
 
-    local healthPct = (health / maxHealth) * 100;
-    return healthPct <= preset.healthThreshold;
+        -- Eligible if ANY buff visible OR ANY buff blacklisted (optimistic)
+        if hasVisibleBuff or hasBlacklistedBuff then
+            return true, visibleBuffs;
+        end
+
+        return false, nil;
+    else
+        -- NORMAL BUFF SPELL (e.g., Rejuvenation) - don't cast if buff already visible
+        local hasBuff = preset.buffTexture and UnitHasBuff(unit, preset.buffTexture);
+        if hasBuff then
+            -- Buff visible, clear blacklist (buff is real)
+            ClearTargetBlacklist(unitName, preset.spell);
+            return false, nil;
+        end
+
+        -- Check blacklist (handles the invisible buff problem)
+        if IsTargetBlacklisted(unitName, preset.spell, preset.blockTime) then
+            return false, nil;
+        end
+
+        return true, nil;
+    end
 end
 
 -- Get health percentage of unit
@@ -272,7 +389,8 @@ local function FindAllHealTargets(preset)
     -- EMERGENCY: Self-preservation check
     -- If enabled and player below threshold, prioritize self above all else
     if preset.selfPreservationEnabled and playerHealth <= preset.selfPreservationThreshold then
-        if NeedsHeal("player", preset) then
+        local needsHeal, visibleBuffs = NeedsHeal("player", preset);
+        if needsHeal then
             local unitName = UnitName("player");
             if unitName then
                 -- Return ONLY player as emergency target
@@ -281,7 +399,8 @@ local function FindAllHealTargets(preset)
                     name = unitName,
                     health = playerHealth,
                     priority = 0,
-                    emergency = true
+                    emergency = true,
+                    visibleBuffs = visibleBuffs
                 }};
             end
         end
@@ -290,27 +409,31 @@ local function FindAllHealTargets(preset)
     -- Normal mode: mouseover and target get special priority, everyone else by HP%
 
     -- Priority 1: Mouseover (intentional healing)
-    if NeedsHeal("mouseover", preset) then
+    local needsHeal, visibleBuffs = NeedsHeal("mouseover", preset);
+    if needsHeal then
         local unitName = UnitName("mouseover");
         if unitName then
             table.insert(targets, {
                 unit = "mouseover",
                 name = unitName,
                 health = GetHealthPercent("mouseover"),
-                priority = 1
+                priority = 1,
+                visibleBuffs = visibleBuffs
             });
         end
     end
 
     -- Priority 2: Current target (intentional healing)
-    if NeedsHeal("target", preset) then
+    needsHeal, visibleBuffs = NeedsHeal("target", preset);
+    if needsHeal then
         local unitName = UnitName("target");
         if unitName then
             table.insert(targets, {
                 unit = "target",
                 name = unitName,
                 health = GetHealthPercent("target"),
-                priority = 2
+                priority = 2,
+                visibleBuffs = visibleBuffs
             });
         end
     end
@@ -321,14 +444,16 @@ local function FindAllHealTargets(preset)
     -- Add party members
     for i = 1, GetNumPartyMembers() do
         local unit = "party" .. i;
-        if NeedsHeal(unit, preset) then
+        needsHeal, visibleBuffs = NeedsHeal(unit, preset);
+        if needsHeal then
             local unitName = UnitName(unit);
             if unitName then
                 table.insert(targets, {
                     unit = unit,
                     name = unitName,
                     health = GetHealthPercent(unit),
-                    priority = 3
+                    priority = 3,
+                    visibleBuffs = visibleBuffs
                 });
             end
         end
@@ -337,28 +462,32 @@ local function FindAllHealTargets(preset)
     -- Add raid members
     for i = 1, GetNumRaidMembers() do
         local unit = "raid" .. i;
-        if NeedsHeal(unit, preset) then
+        needsHeal, visibleBuffs = NeedsHeal(unit, preset);
+        if needsHeal then
             local unitName = UnitName(unit);
             if unitName then
                 table.insert(targets, {
                     unit = unit,
                     name = unitName,
                     health = GetHealthPercent(unit),
-                    priority = 3
+                    priority = 3,
+                    visibleBuffs = visibleBuffs
                 });
             end
         end
     end
 
     -- Add player (same priority as raid/party, sorted by HP%)
-    if NeedsHeal("player", preset) then
+    needsHeal, visibleBuffs = NeedsHeal("player", preset);
+    if needsHeal then
         local unitName = UnitName("player");
         if unitName then
             table.insert(targets, {
                 unit = "player",
                 name = unitName,
                 health = playerHealth,
-                priority = 3
+                priority = 3,
+                visibleBuffs = visibleBuffs
             });
         end
     end
@@ -376,7 +505,7 @@ local function FindAllHealTargets(preset)
 end
 
 -- Cast spell on target with GCD-based success detection (from AUTO-REJU macro)
-local function CastSpellOnTarget(spellName, unit, unitName, preset)
+local function CastSpellOnTarget(spellName, unit, unitName, preset, visibleBuffs)
     if not unit or not unitName then
         return false;
     end
@@ -386,19 +515,26 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset)
         return false;
     end
 
-    -- Get highest rank spell ID
+    -- Get spell ID based on rank setting
     local spellIds = GetSpellIDs(spellName);
-    local maxRank = 0;
-    local maxSpellId = nil;
+    local targetSpellId = nil;
+    local targetRank = preset.spellRank or 0;
 
-    for rank, spellId in pairs(spellIds) do
-        if rank > maxRank then
-            maxRank = rank;
-            maxSpellId = spellId;
+    if targetRank == 0 then
+        -- Use highest rank
+        local maxRank = 0;
+        for rank, spellId in pairs(spellIds) do
+            if rank > maxRank then
+                maxRank = rank;
+                targetSpellId = spellId;
+            end
         end
+    else
+        -- Use specific rank
+        targetSpellId = spellIds[targetRank];
     end
 
-    if not maxSpellId then
+    if not targetSpellId then
         return false;
     end
 
@@ -417,7 +553,7 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset)
     end
 
     -- Cast spell (LOS and range already checked by UnitIsHealable)
-    CastSpell(maxSpellId, BOOKTYPE_SPELL);
+    CastSpell(targetSpellId, BOOKTYPE_SPELL);
 
     -- Setup GCD success detection (from AUTO-REJU macro pattern)
     if not GCDFrame then
@@ -426,6 +562,11 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset)
 
     GCDFrame.checkTime = GetTime() + 0.3;
     GCDFrame.targetName = unitName;
+    GCDFrame.spellName = spellName;
+    GCDFrame.blockTime = preset.blockTime or 0;
+    GCDFrame.cooldown = preset.cooldown or 0;
+    GCDFrame.visibleBuffs = visibleBuffs or {};
+    GCDFrame.requiresBuff = preset.requiresBuff or "";
 
     GCDFrame:SetScript("OnUpdate", function()
         if GetTime() >= GCDFrame.checkTime then
@@ -437,14 +578,44 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset)
             end
 
             if gcdRemaining > 0 then
-                -- Cast succeeded, blacklist the target
-                BlacklistTimes[GCDFrame.targetName] = GetTime();
+                -- Cast succeeded!
+
+                -- Check if this is a consume spell (has requiresBuff)
+                if GCDFrame.requiresBuff and GCDFrame.requiresBuff ~= "" then
+                    -- CONSUME SPELL - handle blacklist clearing
+
+                    -- Update cooldown for this spell
+                    UpdateSpellCooldown(GCDFrame.spellName, GCDFrame.cooldown);
+
+                    -- Determine which buffs to clear
+                    if table.getn(GCDFrame.visibleBuffs) == 0 then
+                        -- No buffs were visible (optimistic cast succeeded)
+                        -- Clear ALL required buff blacklists
+                        for buffName in string.gfind(GCDFrame.requiresBuff, "[^,]+") do
+                            local trimmed = string.gsub(buffName, "^%s*(.-)%s*$", "%1");
+                            ClearTargetBlacklist(GCDFrame.targetName, trimmed);
+                        end
+                    else
+                        -- Some buffs were visible - clear only those
+                        for _, buffName in ipairs(GCDFrame.visibleBuffs) do
+                            ClearTargetBlacklist(GCDFrame.targetName, buffName);
+                        end
+                    end
+                else
+                    -- NORMAL BUFF SPELL - update blacklist for this spell
+                    UpdateTargetBlacklist(GCDFrame.targetName, GCDFrame.spellName, GCDFrame.blockTime);
+                end
             end
 
             -- Clean up
             GCDFrame:SetScript("OnUpdate", nil);
             GCDFrame.checkTime = nil;
             GCDFrame.targetName = nil;
+            GCDFrame.spellName = nil;
+            GCDFrame.blockTime = nil;
+            GCDFrame.cooldown = nil;
+            GCDFrame.visibleBuffs = nil;
+            GCDFrame.requiresBuff = nil;
         end
     end);
 
@@ -456,82 +627,123 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset)
     return true;
 end
 
--- Main healing function with preset support
-function AutoHeal_Cast(presetName)
-    -- Get preset
-    local preset = AHV.Presets[presetName];
-    if not preset then
-        writeLine("AutoHeal: Preset not found: " .. (presetName or "nil"));
+-- Main healing function with chained preset support
+function AutoHeal_Cast(...)
+    -- Handle both old style (single preset) and new style (multiple presets)
+    local presetNames = {};
+
+    if arg.n == 0 then
+        -- No arguments, show help
+        writeLine("AutoHeal: No preset specified. Use /autoheal <preset1> [preset2] ...");
         return;
+    else
+        -- Collect all preset names from arguments
+        for i = 1, arg.n do
+            if arg[i] and arg[i] ~= "" then
+                table.insert(presetNames, arg[i]);
+            end
+        end
     end
 
-    -- Find all potential targets (from AUTO-REJU macro pattern)
-    local targets = FindAllHealTargets(preset);
-
-    -- If no targets found, return silently (allows macro to continue to next line)
-    if not targets or table.getn(targets) == 0 then
-        return;
-    end
-
-    -- Check GCD only if we have valid targets
-    -- This prevents blocking macro execution when there's nothing to heal
+    -- Check GCD first - if on cooldown, don't try anything
     local start, duration = GetSpellCooldown(154, BOOKTYPE_SPELL);
     if start > 0 and (GetTime() - start) < duration then
         return;
     end
 
-    -- Mana check removed - CanCastSpell() already checks if spell is castable (includes mana)
-    -- This handles all situations: base cost, form modifiers, trinket buffs, external buffs, etc.
+    -- Try each preset in order (priority chain)
+    for _, presetName in ipairs(presetNames) do
+        local preset = AHV.Presets[presetName];
 
-    -- Loop through targets and try to cast on each one
-    -- If cast fails (out of range/LOS), try next target
-    -- This prevents getting stuck on unreachable targets
-    for _, targetInfo in targets do
-        if CastSpellOnTarget(preset.spell, targetInfo.unit, targetInfo.name, preset) then
-            -- Cast succeeded, stop trying other targets
-            -- This WILL trigger GCD and stop macro execution (correct behavior)
-            return;
+        if not preset then
+            writeLine("AutoHeal: Preset not found: " .. presetName);
+        else
+            -- Check if spell is on cooldown
+            if IsSpellOnCooldown(preset.spell, preset.cooldown or 0) then
+                -- Skip this preset, try next one
+            else
+                -- Find all potential targets for this preset
+                local targets = FindAllHealTargets(preset);
+
+                -- If targets found, try to cast
+                if targets and table.getn(targets) > 0 then
+                    -- Loop through targets and try to cast on each one
+                    for _, targetInfo in targets do
+                        if CastSpellOnTarget(preset.spell, targetInfo.unit, targetInfo.name, preset, targetInfo.visibleBuffs) then
+                            -- Cast succeeded! Stop trying other presets
+                            return;
+                        end
+                    end
+                end
+
+                -- No valid targets for this preset, continue to next preset
+            end
         end
     end
 
-    -- If we get here, no targets were castable (all out of range/LOS)
-    -- Return silently to allow macro to continue to next line
+    -- If we get here, no presets had valid targets
+    -- Return silently to allow macro to continue
 end
 
 --[ UI Functions ]--
 
 -- Current selected preset in UI
 local SelectedPreset = nil;
-local PresetButtons = {};
+local PresetListItems = {};
 
--- Create preset list buttons
-local function CreatePresetButtons()
-    local yOffset = -70;
-    local buttonNum = 1;
+-- Create preset list items (text-based, not buttons)
+local function CreatePresetList()
+    local yOffset = 8;
+    local itemNum = 1;
 
-    -- Clear old buttons
-    for _, btn in pairs(PresetButtons) do
-        btn:Hide();
+    -- Clear old items
+    for _, itemData in pairs(PresetListItems) do
+        if itemData.fontString then
+            itemData.fontString:Hide();
+        end
+        if itemData.button then
+            itemData.button:Hide();
+        end
     end
-    PresetButtons = {};
+    PresetListItems = {};
 
-    -- Create button for each preset
+    -- Create text item for each preset
     for name, _ in pairs(AHV.Presets) do
-        local btn = CreateFrame("Button", "AutoHealPresetBtn" .. buttonNum, AutoHealConfigFrame, "GameMenuButtonTemplate");
-        btn:SetWidth(120);
-        btn:SetHeight(20);
-        btn:SetPoint("TOPLEFT", 20, yOffset);
-        btn:SetText(name);
-        -- Store preset name on button for OnClick to access
-        btn.presetName = name;
-        btn:SetScript("OnClick", function()
+        local item = AutoHealConfigFramePresetListFrame:CreateFontString("AutoHealPresetItem" .. itemNum, "OVERLAY", "GameFontNormal");
+        item:SetPoint("TOPLEFT", 10, -yOffset);
+        item:SetText(name);
+        item:SetJustifyH("LEFT");
+        item:SetWidth(140);
+
+        -- Make it clickable
+        local button = CreateFrame("Button", nil, AutoHealConfigFramePresetListFrame);
+        button:SetAllPoints(item);
+        button.presetName = name;
+        button.fontString = item;
+        button:SetScript("OnClick", function()
             AutoHeal_SelectPreset(this.presetName);
         end);
-        btn:Show();
+        button:SetScript("OnEnter", function()
+            this.fontString:SetTextColor(1, 1, 0);
+        end);
+        button:SetScript("OnLeave", function()
+            if SelectedPreset == this.presetName then
+                this.fontString:SetTextColor(0, 1, 0);
+            else
+                this.fontString:SetTextColor(1, 1, 1);
+            end
+        end);
 
-        table.insert(PresetButtons, btn);
-        yOffset = yOffset - 25;
-        buttonNum = buttonNum + 1;
+        -- Highlight if selected
+        if SelectedPreset == name then
+            item:SetTextColor(0, 1, 0);
+        else
+            item:SetTextColor(1, 1, 1);
+        end
+
+        table.insert(PresetListItems, {fontString = item, button = button});
+        yOffset = yOffset + 18;
+        itemNum = itemNum + 1;
     end
 end
 
@@ -546,7 +758,10 @@ function AutoHeal_SelectPreset(name)
         AutoHealConfigFrameHealthEdit:SetText(tostring(preset.healthThreshold or 90));
         AutoHealConfigFrameBlockEdit:SetText(tostring(preset.blockTime or 12));
         AutoHealConfigFrameRangeEdit:SetText(tostring(preset.maxRange or 40));
+        AutoHealConfigFrameCooldownEdit:SetText(tostring(preset.cooldown or 0));
         AutoHealConfigFrameSelfThresholdEdit:SetText(tostring(preset.selfPreservationThreshold or 60));
+        AutoHealConfigFrameSpellRankEdit:SetText(tostring(preset.spellRank or 0));
+        AutoHealConfigFrameRequiresBuffEdit:SetText(preset.requiresBuff or "");
 
         -- Set checkbox state
         if preset.selfPreservationEnabled then
@@ -555,9 +770,14 @@ function AutoHeal_SelectPreset(name)
             AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
         end
 
-        -- Show auto-detected buff texture (read-only display)
-        local buffTex = GetBuffTextureForSpell(preset.spell);
-        AutoHealConfigFrameBuffInfo:SetText(buffTex or "Not detected");
+        -- Update list highlighting
+        for _, listItem in pairs(PresetListItems) do
+            if listItem.button.presetName == name then
+                listItem.fontString:SetTextColor(0, 1, 0);  -- Green for selected
+            else
+                listItem.fontString:SetTextColor(1, 1, 1);  -- White for others
+            end
+        end
     end
 end
 
@@ -588,6 +808,8 @@ function AutoHeal_SavePreset()
 
     preset.blockTime = tonumber(AutoHealConfigFrameBlockEdit:GetText()) or 12;
     preset.maxRange = tonumber(AutoHealConfigFrameRangeEdit:GetText()) or 40;
+    preset.cooldown = tonumber(AutoHealConfigFrameCooldownEdit:GetText()) or 0;
+    preset.spellRank = tonumber(AutoHealConfigFrameSpellRankEdit:GetText()) or 0;
 
     -- Validate self-preservation threshold (0-100)
     local selfThreshold = tonumber(AutoHealConfigFrameSelfThresholdEdit:GetText()) or 60;
@@ -600,6 +822,10 @@ function AutoHeal_SavePreset()
 
     -- Get checkbox state
     preset.selfPreservationEnabled = (AutoHealConfigFrameSelfPreservationCheck:GetChecked() == 1);
+
+    -- Get requires buff field
+    local requiresBuffText = AutoHealConfigFrameRequiresBuffEdit:GetText();
+    preset.requiresBuff = (requiresBuffText and requiresBuffText ~= "") and requiresBuffText or "";
 
     -- Auto-detect and cache buff texture
     preset.buffTexture = GetBuffTextureForSpell(preset.spell);
@@ -629,18 +855,21 @@ function AutoHeal_NewPreset()
                 if AHV.Presets[name] then
                     writeLine("AutoHeal: Preset '" .. name .. "' already exists");
                 else
-                    -- Create new preset with defaults (mana and buff auto-detected)
+                    -- Create new preset with defaults
                     AHV.Presets[name] = {
                         name = name,
-                        spell = "Rejuvenation",
-                        healthThreshold = 90,
-                        blockTime = 12,
-                        maxRange = 40,
-                        selfPreservationThreshold = 60,
-                        selfPreservationEnabled = true
+                        spell = DAHV.PresetDefaults.spell,
+                        spellRank = DAHV.PresetDefaults.spellRank,
+                        healthThreshold = DAHV.PresetDefaults.healthThreshold,
+                        blockTime = DAHV.PresetDefaults.blockTime,
+                        cooldown = DAHV.PresetDefaults.cooldown,
+                        maxRange = DAHV.PresetDefaults.maxRange,
+                        selfPreservationThreshold = DAHV.PresetDefaults.selfPreservationThreshold,
+                        selfPreservationEnabled = DAHV.PresetDefaults.selfPreservationEnabled,
+                        requiresBuff = DAHV.PresetDefaults.requiresBuff
                     };
                     AutoHealVariables.Presets[name] = AHV.Presets[name];
-                    CreatePresetButtons();
+                    CreatePresetList();
                     AutoHeal_SelectPreset(name);
                     writeLine("AutoHeal: Preset '" .. name .. "' created");
                 end
@@ -668,15 +897,17 @@ function AutoHeal_DeletePreset()
             AHV.Presets[SelectedPreset] = nil;
             AutoHealVariables.Presets[SelectedPreset] = nil;
             SelectedPreset = nil;
-            CreatePresetButtons();
+            CreatePresetList();
             AutoHealConfigFrameCurrentPreset:SetText("Select a preset");
             AutoHealConfigFrameSpellEdit:SetText("");
             AutoHealConfigFrameHealthEdit:SetText("");
             AutoHealConfigFrameBlockEdit:SetText("");
             AutoHealConfigFrameRangeEdit:SetText("");
+            AutoHealConfigFrameCooldownEdit:SetText("");
             AutoHealConfigFrameSelfThresholdEdit:SetText("");
+            AutoHealConfigFrameSpellRankEdit:SetText("");
             AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
-            AutoHealConfigFrameBuffInfo:SetText("");
+            AutoHealConfigFrameRequiresBuffEdit:SetText("");
             writeLine("AutoHeal: Preset deleted");
         end,
     };
@@ -696,12 +927,15 @@ function AutoHeal_ConfigOnLoad()
     SetupEditBox(AutoHealConfigFrameHealthEdit);
     SetupEditBox(AutoHealConfigFrameBlockEdit);
     SetupEditBox(AutoHealConfigFrameRangeEdit);
+    SetupEditBox(AutoHealConfigFrameCooldownEdit);
     SetupEditBox(AutoHealConfigFrameSelfThresholdEdit);
+    SetupEditBox(AutoHealConfigFrameSpellRankEdit);
+    SetupEditBox(AutoHealConfigFrameRequiresBuffEdit);
 end
 
 -- Config frame OnShow
 function AutoHeal_ConfigOnShow()
-    CreatePresetButtons();
+    CreatePresetList();
     if SelectedPreset and AHV.Presets[SelectedPreset] then
         AutoHeal_SelectPreset(SelectedPreset);
     end
@@ -746,28 +980,98 @@ local function SlashCommandHandler(msg)
 
     if cmdLower == "config" or cmdLower == "cfg" then
         AutoHeal_ToggleConfig();
-    elseif cmd == "" or cmdLower == "reju" or cmdLower == "1" then
-        -- Default preset
-        local presetName = FindPreset("reju");
-        if presetName then
-            AutoHeal_Cast(presetName);
-        else
-            writeLine("AutoHeal: Default preset 'reju' not found");
-        end
-    else
-        -- Try to find preset by name (case-insensitive)
-        local presetName = FindPreset(cmd);
-        if presetName then
-            AutoHeal_Cast(presetName);
-        else
-            writeLine("AutoHeal Usage:");
-            writeLine("/autoheal config - Open configuration window");
-            writeLine("/autoheal <preset> - Cast using preset");
+        return;
+    end
+
+    if cmdLower == "delete all" then
+        StaticPopupDialogs["AUTOHEAL_DELETE_ALL"] = {
+            text = "Delete ALL presets and reset AutoHeal to clean state?",
+            button1 = "Delete All",
+            button2 = "Cancel",
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+            OnAccept = function()
+                AHV.Presets = {};
+                AutoHealVariables.Presets = {};
+                SelectedPreset = nil;
+                TargetStates = {};
+                SpellCooldowns = {};
+                if AutoHealConfigFrame and AutoHealConfigFrame:IsVisible() then
+                    CreatePresetList();
+                    AutoHealConfigFrameCurrentPreset:SetText("Select a preset");
+                    AutoHealConfigFrameSpellEdit:SetText("");
+                    AutoHealConfigFrameHealthEdit:SetText("");
+                    AutoHealConfigFrameBlockEdit:SetText("");
+                    AutoHealConfigFrameRangeEdit:SetText("");
+                    AutoHealConfigFrameCooldownEdit:SetText("");
+                    AutoHealConfigFrameSelfThresholdEdit:SetText("");
+                    AutoHealConfigFrameSpellRankEdit:SetText("");
+                    AutoHealConfigFrameSelfPreservationCheck:SetChecked(nil);
+                    AutoHealConfigFrameRequiresBuffEdit:SetText("");
+                end
+                writeLine("AutoHeal: All configuration deleted. Fresh start!");
+            end,
+        };
+        StaticPopup_Show("AUTOHEAL_DELETE_ALL");
+        return;
+    end
+
+    -- Parse multiple preset names from command
+    local presetNames = {};
+    local words = {};
+
+    -- Split by spaces
+    for word in string.gfind(cmd, "%S+") do
+        table.insert(words, word);
+    end
+
+    if table.getn(words) == 0 then
+        -- No arguments - show help
+        writeLine("AutoHeal Usage:");
+        writeLine("/autoheal config - Open configuration window");
+        writeLine("/autoheal <preset1> [preset2] ... - Cast using preset chain");
+        writeLine("/autoheal delete all - Delete all presets and reset");
+        writeLine("Example: /autoheal swift reju");
+        if next(AHV.Presets) then
             writeLine("");
             writeLine("Available presets:");
             for name, _ in pairs(AHV.Presets) do
                 writeLine("  " .. name);
             end
+        else
+            writeLine("");
+            writeLine("No presets created yet. Use /autoheal config to create.");
+        end
+        return;
+    end
+
+    -- Try to find each word as a preset (case-insensitive)
+    local foundAny = false;
+    for _, word in ipairs(words) do
+        local presetName = FindPreset(word);
+        if presetName then
+            table.insert(presetNames, presetName);
+            foundAny = true;
+        else
+            writeLine("AutoHeal: Preset not found: " .. word);
+        end
+    end
+
+    if foundAny then
+        -- Call with all found presets
+        AutoHeal_Cast(unpack(presetNames));
+    else
+        -- Show help
+        writeLine("AutoHeal Usage:");
+        writeLine("/autoheal config - Open configuration window");
+        writeLine("/autoheal <preset1> [preset2] ... - Cast using preset chain");
+        writeLine("/autoheal delete all - Delete all presets and reset");
+        writeLine("Example: /autoheal swift reju");
+        writeLine("");
+        writeLine("Available presets:");
+        for name, _ in pairs(AHV.Presets) do
+            writeLine("  " .. name);
         end
     end
 end
@@ -779,25 +1083,31 @@ local function InitializeAddon()
         AutoHealVariables = {};
     end
 
-    -- Initialize presets
+    -- Initialize presets (empty by default)
     if not AutoHealVariables.Presets then
         AutoHealVariables.Presets = {};
     end
 
-    -- Copy defaults for missing presets
-    for k, v in pairs(DAHV.Presets) do
-        if not AutoHealVariables.Presets[k] then
-            AutoHealVariables.Presets[k] = {};
-            for kk, vv in pairs(v) do
-                AutoHealVariables.Presets[k][kk] = vv;
-            end
+    -- Migrate old presets to new format (add missing fields)
+    for k, preset in pairs(AutoHealVariables.Presets) do
+        -- Remove old spellType field (no longer used)
+        preset.spellType = nil;
+
+        if preset.requiresBuff == nil then
+            preset.requiresBuff = "";
+        end
+        if preset.cooldown == nil then
+            preset.cooldown = 0;
+        end
+        if preset.spellRank == nil then
+            preset.spellRank = 0;
         end
     end
 
     -- Set runtime config
     AHV.Presets = AutoHealVariables.Presets;
 
-    writeLine("AutoHeal loaded. Type /autoheal for help.");
+    writeLine("AutoHeal loaded. Type /autoheal config to create presets.");
 end
 
 -- Register slash commands
