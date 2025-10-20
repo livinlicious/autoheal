@@ -555,7 +555,7 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset, visibleBuffs
     -- Cast spell (LOS and range already checked by UnitIsHealable)
     CastSpell(targetSpellId, BOOKTYPE_SPELL);
 
-    -- Setup GCD success detection (from AUTO-REJU macro pattern)
+    -- Setup GCD success detection (dynamic spell slot checking)
     if not GCDFrame then
         GCDFrame = CreateFrame("Frame");
     end
@@ -567,11 +567,12 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset, visibleBuffs
     GCDFrame.cooldown = preset.cooldown or 0;
     GCDFrame.visibleBuffs = visibleBuffs or {};
     GCDFrame.requiresBuff = preset.requiresBuff or "";
+    GCDFrame.gcdSpellSlot = targetSpellId;  -- Use the actual spell slot being cast
 
     GCDFrame:SetScript("OnUpdate", function()
         if GetTime() >= GCDFrame.checkTime then
-            -- Check if GCD is active (using spell slot 154 as reliable indicator from macro)
-            local start, duration = GetSpellCooldown(154, BOOKTYPE_SPELL);
+            -- Check if GCD is active using the actual spell's slot
+            local start, duration = GetSpellCooldown(GCDFrame.gcdSpellSlot, BOOKTYPE_SPELL);
             local gcdRemaining = 0;
             if start and duration and duration > 0 then
                 gcdRemaining = (start + duration) - GetTime();
@@ -616,6 +617,7 @@ local function CastSpellOnTarget(spellName, unit, unitName, preset, visibleBuffs
             GCDFrame.cooldown = nil;
             GCDFrame.visibleBuffs = nil;
             GCDFrame.requiresBuff = nil;
+            GCDFrame.gcdSpellSlot = nil;
         end
     end);
 
@@ -643,12 +645,6 @@ function AutoHeal_Cast(...)
                 table.insert(presetNames, arg[i]);
             end
         end
-    end
-
-    -- Check GCD first - if on cooldown, don't try anything
-    local start, duration = GetSpellCooldown(154, BOOKTYPE_SPELL);
-    if start > 0 and (GetTime() - start) < duration then
-        return;
     end
 
     -- Try each preset in order (priority chain)
