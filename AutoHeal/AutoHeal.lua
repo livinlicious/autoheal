@@ -4,6 +4,7 @@
 -- Saved Variables
 AutoHealVariables = {};
 local AHV = {};
+local PresetOrder = {};  -- Ordered list of preset names
 
 -- Default values for new presets
 local DAHV = {
@@ -19,7 +20,8 @@ local DAHV = {
         requiresBuff = "",  -- empty = normal buff spell, filled = consume spell that requires this buff
         ignoreBuffCheck = false,  -- true = rely only on blacklist timer, false = check for buff presence
         priorityList = {},  -- array of player names to heal first
-        priorityMode = false  -- false = "All Equal" (sort by HP), true = "By Order" (top to bottom)
+        priorityMode = false,  -- false = "All Equal" (sort by HP), true = "By Order" (top to bottom)
+        directTarget = false  -- true = only heal current target, ignore all priority logic
     }
 }
 
@@ -269,6 +271,22 @@ local function ClearTargetBlacklist(unitName, spellName)
     end
 end
 
+-- Check if player is in Tree of Life form
+local function IsInTreeForm()
+    local i = 1;
+    while UnitBuff("player", i) do
+        local buffTexture = UnitBuff("player", i);
+        if buffTexture then
+            -- Tree of Life Form buff icon
+            if string.find(buffTexture, "Ability_Druid_TreeofLife") then
+                return true;
+            end
+        end
+        i = i + 1;
+    end
+    return false;
+end
+
 -- Check if unit needs healing based on preset configuration
 -- Returns: needsHeal (bool), visibleBuffs (table of spell names that were visible)
 local function NeedsHeal(unit, preset)
@@ -479,11 +497,12 @@ end
 -- Returns sorted table of targets
 -- FIXED: Player prioritized by HP%, not always last
 -- ADDED: Emergency self-preservation mode
+-- ADDED: Direct Target mode
 local function FindAllHealTargets(preset)
     local targets = {};
     local playerHealth = GetHealthPercent("player");
 
-    -- EMERGENCY: Self-preservation check
+    -- EMERGENCY: Self-preservation check (always overrides everything, including direct target)
     -- If enabled and player below threshold, prioritize self above all else
     if preset.selfPreservationEnabled and playerHealth <= preset.selfPreservationThreshold then
         local needsHeal, visibleBuffs = NeedsHeal("player", preset);
@@ -501,6 +520,28 @@ local function FindAllHealTargets(preset)
                 }};
             end
         end
+    end
+
+    -- DIRECT TARGET MODE: Only heal current target
+    if preset.directTarget then
+        if UnitExists("target") and UnitIsPlayer("target") then
+            local needsHeal, visibleBuffs = NeedsHeal("target", preset);
+            if needsHeal then
+                local unitName = UnitName("target");
+                if unitName then
+                    return {{
+                        unit = "target",
+                        name = unitName,
+                        health = GetHealthPercent("target"),
+                        priority = 0,
+                        directTarget = true,
+                        visibleBuffs = visibleBuffs
+                    }};
+                end
+            end
+        end
+        -- No valid target in direct mode, return empty
+        return {};
     end
 
     -- PRIORITY LIST: Check priority targets first
@@ -770,8 +811,11 @@ function AutoHeal_Cast(...)
         if not preset then
             writeLine("AutoHeal: Preset not found: " .. presetName);
         else
+            -- Check if player is in Tree of Life form and trying to cast Healing Touch
+            if IsInTreeForm() and string.find(preset.spell, "Healing Touch") then
+                -- Skip this preset, continue to next (condition not met, like HP threshold or no targets)
             -- Check if spell is on cooldown
-            if IsSpellOnCooldown(preset.spell, preset.cooldown or 0) then
+            elseif IsSpellOnCooldown(preset.spell, preset.cooldown or 0) then
                 -- Skip this preset, try next one
             else
                 -- Find all potential targets for this preset
@@ -816,16 +860,44 @@ local function CreatePresetList()
         if itemData.button then
             itemData.button:Hide();
         end
+        if itemData.upButton then
+            itemData.upButton:Hide();
+        end
+        if itemData.downButton then
+            itemData.downButton:Hide();
+        end
     end
     PresetListItems = {};
 
-    -- Create text item for each preset
+    -- Build preset order if not exists or validate
+    local validOrder = {};
+    for _, name in ipairs(PresetOrder) do
+        if AHV.Presets[name] then
+            table.insert(validOrder, name);
+        end
+    end
+    -- Add any new presets not in order
     for name, _ in pairs(AHV.Presets) do
+        local found = false;
+        for _, orderedName in ipairs(validOrder) do
+            if orderedName == name then
+                found = true;
+                break;
+            end
+        end
+        if not found then
+            table.insert(validOrder, name);
+        end
+    end
+    PresetOrder = validOrder;
+
+    -- Create text item for each preset (in order)
+    for index, name in ipairs(PresetOrder) do
         local item = AutoHealConfigFramePresetListFrame:CreateFontString("AutoHealPresetItem" .. itemNum, "OVERLAY", "GameFontNormal");
         item:SetPoint("TOPLEFT", 10, -yOffset);
         item:SetText(name);
         item:SetJustifyH("LEFT");
-        item:SetWidth(140);
+        item:SetWidth(110);
 
         -- Make it clickable
         local button = CreateFrame("Button", nil, AutoHealConfigFramePresetListFrame);
@@ -846,6 +918,32 @@ local function CreatePresetList()
             end
         end);
 
+        -- Down button (rightmost)
+        local downButton = CreateFrame("Button", nil, AutoHealConfigFramePresetListFrame);
+        downButton:SetPoint("TOPRIGHT", AutoHealConfigFramePresetListFrame, "TOPRIGHT", -8, -yOffset);
+        downButton:SetWidth(16);
+        downButton:SetHeight(16);
+        downButton:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up");
+        downButton:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down");
+        downButton:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Highlight");
+        downButton.presetIndex = index;
+        downButton:SetScript("OnClick", function()
+            AutoHeal_MovePresetDown(this.presetIndex);
+        end);
+
+        -- Up button (left of down button, overlapping)
+        local upButton = CreateFrame("Button", nil, AutoHealConfigFramePresetListFrame);
+        upButton:SetPoint("RIGHT", downButton, "LEFT", 2, 0);
+        upButton:SetWidth(16);
+        upButton:SetHeight(16);
+        upButton:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up");
+        upButton:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down");
+        upButton:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Highlight");
+        upButton.presetIndex = index;
+        upButton:SetScript("OnClick", function()
+            AutoHeal_MovePresetUp(this.presetIndex);
+        end);
+
         -- Highlight if selected
         if SelectedPreset == name then
             item:SetTextColor(0, 1, 0);
@@ -853,7 +951,7 @@ local function CreatePresetList()
             item:SetTextColor(1, 1, 1);
         end
 
-        table.insert(PresetListItems, {fontString = item, button = button});
+        table.insert(PresetListItems, {fontString = item, button = button, upButton = upButton, downButton = downButton});
         yOffset = yOffset + 18;
         itemNum = itemNum + 1;
     end
@@ -1025,6 +1123,12 @@ function AutoHeal_SelectPreset(name)
             AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(nil);
         end
 
+        if preset.directTarget then
+            AutoHealConfigFrameDirectTargetCheck:SetChecked(1);
+        else
+            AutoHealConfigFrameDirectTargetCheck:SetChecked(nil);
+        end
+
         -- Load priority mode dropdown
         UIDropDownMenu_Initialize(AutoHealConfigFramePriorityModeButton, AutoHeal_InitPriorityModeDropdown);
         if preset.priorityMode then
@@ -1092,6 +1196,7 @@ function AutoHeal_SavePreset()
     -- Get checkbox states
     preset.selfPreservationEnabled = (AutoHealConfigFrameSelfPreservationCheck:GetChecked() == 1);
     preset.ignoreBuffCheck = (AutoHealConfigFrameIgnoreBuffCheckCheck:GetChecked() == 1);
+    preset.directTarget = (AutoHealConfigFrameDirectTargetCheck:GetChecked() == 1);
 
     -- Priority mode is saved via dropdown selection
     -- Priority list is already saved via Add/Remove/Clear functions
@@ -1142,7 +1247,8 @@ function AutoHeal_NewPreset()
                         requiresBuff = DAHV.PresetDefaults.requiresBuff,
                         ignoreBuffCheck = DAHV.PresetDefaults.ignoreBuffCheck,
                         priorityList = {},
-                        priorityMode = DAHV.PresetDefaults.priorityMode
+                        priorityMode = DAHV.PresetDefaults.priorityMode,
+                        directTarget = DAHV.PresetDefaults.directTarget
                     };
                     AutoHealVariables.Presets[name] = AHV.Presets[name];
                     CreatePresetList();
@@ -1315,6 +1421,38 @@ function AutoHeal_MovePriorityUp(index)
 
     AutoHealVariables.Presets[SelectedPreset] = preset;
     CreatePriorityList();
+end
+
+-- Move preset up in list
+function AutoHeal_MovePresetUp(index)
+    if index <= 1 then
+        return;  -- Can't move first item up
+    end
+
+    -- Swap with previous item
+    local temp = PresetOrder[index - 1];
+    PresetOrder[index - 1] = PresetOrder[index];
+    PresetOrder[index] = temp;
+
+    -- Save order and refresh
+    AutoHealVariables.PresetOrder = PresetOrder;
+    CreatePresetList();
+end
+
+-- Move preset down in list
+function AutoHeal_MovePresetDown(index)
+    if index >= table.getn(PresetOrder) then
+        return;  -- Can't move last item down
+    end
+
+    -- Swap with next item
+    local temp = PresetOrder[index + 1];
+    PresetOrder[index + 1] = PresetOrder[index];
+    PresetOrder[index] = temp;
+
+    -- Save order and refresh
+    AutoHealVariables.PresetOrder = PresetOrder;
+    CreatePresetList();
 end
 
 -- Move priority player down in list
@@ -1587,6 +1725,12 @@ local function InitializeAddon()
     if not AutoHealVariables.Presets then
         AutoHealVariables.Presets = {};
     end
+
+    -- Initialize preset order
+    if not AutoHealVariables.PresetOrder then
+        AutoHealVariables.PresetOrder = {};
+    end
+    PresetOrder = AutoHealVariables.PresetOrder;
 
     -- Migrate old presets to new format (add missing fields)
     for k, preset in pairs(AutoHealVariables.Presets) do

@@ -85,6 +85,9 @@
                 <FontString name="$parentIgnoreBuffCheckLabel" inherits="GameFontNormalSmall" text="Ignore Buff Check:">
                     <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-401"/></Offset></Anchor></Anchors>
                 </FontString>
+                <FontString name="$parentDirectTargetLabel" inherits="GameFontNormalSmall" text="Direct Target Only:">
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-433"/></Offset></Anchor></Anchors>
+                </FontString>
 
                 <!-- Right Column: Priority List -->
                 <FontString name="$parentPriorityListLabel" inherits="GameFontNormalSmall" text="Priority Players:">
@@ -327,6 +330,23 @@
                     <OnEnter>
                         GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
                         GameTooltip:SetText("Multiple Spells can have the same Buff Icon.\nSpell detection is then based on Blacklist Timer, knowing when cast was done until cooldown is over.");
+                        GameTooltip:Show();
+                    </OnEnter>
+                    <OnLeave>GameTooltip:Hide();</OnLeave>
+                </Scripts>
+            </CheckButton>
+
+            <CheckButton name="$parentDirectTargetCheck">
+                <Size><AbsDimension x="24" y="24"/></Size>
+                <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="300" y="-429"/></Offset></Anchor></Anchors>
+                <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+                <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+                <HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+                <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+                <Scripts>
+                    <OnEnter>
+                        GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
+                        GameTooltip:SetText("Only heal current target, ignore all priority logic.\nUseful for precasting or directed healing on specific players.");
                         GameTooltip:Show();
                     </OnEnter>
                     <OnLeave>GameTooltip:Hide();</OnLeave>
