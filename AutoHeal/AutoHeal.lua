@@ -17,7 +17,9 @@ local DAHV = {
         selfPreservationThreshold = 60,
         selfPreservationEnabled = true,
         requiresBuff = "",  -- empty = normal buff spell, filled = consume spell that requires this buff
-        ignoreBuffCheck = false  -- true = rely only on blacklist timer, false = check for buff presence
+        ignoreBuffCheck = false,  -- true = rely only on blacklist timer, false = check for buff presence
+        priorityList = {},  -- array of player names to heal first
+        priorityMode = false  -- false = "All Equal" (sort by HP), true = "By Order" (top to bottom)
     }
 }
 
@@ -26,6 +28,10 @@ local DAHV = {
 local TargetStates = {};  -- [targetName][spellName] = { lastCast, duration }
 local SpellCooldowns = {};  -- [spellName] = { lastCast, cooldown }
 local GCDFrame = nil;
+
+-- Priority list UI tracking
+local PriorityListItems = {};
+local SelectedPriorityIndex = nil;
 
 -- Helper function to write to chat
 local function writeLine(s, r, g, b)
@@ -366,6 +372,92 @@ local function GetHealthPercent(unit)
     return (hp / maxhp) * 100;
 end
 
+-- Find unit by player name (searches party/raid)
+local function FindUnitByName(playerName)
+    if not playerName then
+        return nil;
+    end
+
+    -- Check player
+    if UnitName("player") == playerName then
+        return "player";
+    end
+
+    -- Check party
+    for i = 1, 4 do
+        local unit = "party"..i;
+        if UnitExists(unit) and UnitName(unit) == playerName then
+            return unit;
+        end
+    end
+
+    -- Check raid
+    for i = 1, 40 do
+        local unit = "raid"..i;
+        if UnitExists(unit) and UnitName(unit) == playerName then
+            return unit;
+        end
+    end
+
+    return nil;
+end
+
+-- Check if unit name is in priority list
+local function IsInPriorityList(unitName, preset)
+    if not preset or not preset.priorityList or not unitName then
+        return false;
+    end
+
+    for _, name in ipairs(preset.priorityList) do
+        if name == unitName then
+            return true;
+        end
+    end
+
+    return false;
+end
+
+-- Get priority targets that need healing
+local function GetPriorityTargets(preset)
+    local targets = {};
+
+    if not preset or not preset.priorityList or table.getn(preset.priorityList) == 0 then
+        return targets;
+    end
+
+    -- Collect priority targets that need healing
+    for index, playerName in ipairs(preset.priorityList) do
+        local unit = FindUnitByName(playerName);
+        if unit then
+            local needsHeal, visibleBuffs = NeedsHeal(unit, preset);
+            if needsHeal then
+                table.insert(targets, {
+                    unit = unit,
+                    name = playerName,
+                    hp = GetHealthPercent(unit),
+                    priorityIndex = index,
+                    visibleBuffs = visibleBuffs
+                });
+            end
+        end
+    end
+
+    -- Sort based on priority mode
+    if preset.priorityMode then
+        -- "By Order" mode: sort by priority index (top to bottom)
+        table.sort(targets, function(a, b)
+            return a.priorityIndex < b.priorityIndex;
+        end);
+    else
+        -- "All Equal" mode: sort by HP% (lowest first)
+        table.sort(targets, function(a, b)
+            return a.hp < b.hp;
+        end);
+    end
+
+    return targets;
+end
+
 -- Check if spell is castable (from AUTO-REJU macro)
 local function CanCastSpell(spellName)
     local i = 1;
@@ -409,6 +501,25 @@ local function FindAllHealTargets(preset)
                 }};
             end
         end
+    end
+
+    -- PRIORITY LIST: Check priority targets first
+    -- If any priority targets need healing, return them (sorted by mode)
+    local priorityTargets = GetPriorityTargets(preset);
+    if table.getn(priorityTargets) > 0 then
+        -- Convert to same format as normal targets
+        local formattedTargets = {};
+        for _, target in ipairs(priorityTargets) do
+            table.insert(formattedTargets, {
+                unit = target.unit,
+                name = target.name,
+                health = target.hp,
+                priority = 0.5,  -- Between emergency (0) and mouseover (1)
+                priorityList = true,
+                visibleBuffs = target.visibleBuffs
+            });
+        end
+        return formattedTargets;
     end
 
     -- Normal mode: mouseover and target get special priority, everyone else by HP%
@@ -748,12 +859,149 @@ local function CreatePresetList()
     end
 end
 
+-- Create priority list UI items
+local function CreatePriorityList()
+    -- Clear old items first (always, even if no preset selected)
+    for _, itemData in pairs(PriorityListItems) do
+        if itemData.fontString then
+            itemData.fontString:Hide();
+            itemData.fontString:SetText("");
+        end
+        if itemData.button then
+            itemData.button:Hide();
+        end
+        if itemData.upButton then
+            itemData.upButton:Hide();
+        end
+        if itemData.downButton then
+            itemData.downButton:Hide();
+        end
+        if itemData.removeButton then
+            itemData.removeButton:Hide();
+        end
+    end
+    PriorityListItems = {};
+
+    if not SelectedPreset then
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset then
+        return;
+    end
+
+    -- Initialize priorityList if it doesn't exist
+    if not preset.priorityList then
+        preset.priorityList = {};
+    end
+
+    -- If empty list, just return (UI is already cleared)
+    if table.getn(preset.priorityList) == 0 then
+        return;
+    end
+
+    local yOffset = 8;
+
+    -- Create text item for each priority player
+    for index, playerName in ipairs(preset.priorityList) do
+        -- Use unique name with timestamp to avoid conflicts
+        local uniqueName = "AutoHealPriorityItem_" .. SelectedPreset .. "_" .. index .. "_" .. GetTime();
+        local item = AutoHealConfigFramePriorityListFrame:CreateFontString(uniqueName, "OVERLAY", "GameFontNormal");
+        item:SetPoint("TOPLEFT", 10, -yOffset);
+        item:SetText(index .. ". " .. playerName);
+        item:SetJustifyH("LEFT");
+        item:SetWidth(80);
+
+        -- Make it clickable
+        local button = CreateFrame("Button", nil, AutoHealConfigFramePriorityListFrame);
+        button:SetPoint("TOPLEFT", 10, -yOffset);
+        button:SetWidth(80);
+        button:SetHeight(16);
+        button.playerName = playerName;
+        button.priorityIndex = index;
+        button.fontString = item;
+        button:SetScript("OnClick", function()
+            SelectedPriorityIndex = this.priorityIndex;
+            -- Refresh highlighting
+            CreatePriorityList();
+        end);
+        button:SetScript("OnEnter", function()
+            this.fontString:SetTextColor(1, 1, 0);
+        end);
+        button:SetScript("OnLeave", function()
+            if SelectedPriorityIndex == this.priorityIndex then
+                this.fontString:SetTextColor(0, 1, 0);
+            else
+                this.fontString:SetTextColor(1, 1, 1);
+            end
+        end);
+
+        -- Remove (X) button (rightmost)
+        local removeButton = CreateFrame("Button", nil, AutoHealConfigFramePriorityListFrame);
+        removeButton:SetPoint("TOPRIGHT", AutoHealConfigFramePriorityListFrame, "TOPRIGHT", -2, -yOffset);
+        removeButton:SetWidth(16);
+        removeButton:SetHeight(16);
+        removeButton:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up");
+        removeButton:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down");
+        removeButton:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight");
+        removeButton.priorityIndex = index;
+        removeButton:SetScript("OnClick", function()
+            AutoHeal_RemoveFromPriorityList(this.priorityIndex);
+        end);
+
+        -- Down button (left of remove button, moved closer to right)
+        local downButton = CreateFrame("Button", nil, AutoHealConfigFramePriorityListFrame);
+        downButton:SetPoint("RIGHT", removeButton, "LEFT", -2, 0);
+        downButton:SetWidth(16);
+        downButton:SetHeight(16);
+        downButton:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up");
+        downButton:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down");
+        downButton:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Highlight");
+        downButton.priorityIndex = index;
+        downButton:SetScript("OnClick", function()
+            AutoHeal_MovePriorityDown(this.priorityIndex);
+        end);
+
+        -- Up button (left of down button, overlapping more to close gap)
+        local upButton = CreateFrame("Button", nil, AutoHealConfigFramePriorityListFrame);
+        upButton:SetPoint("RIGHT", downButton, "LEFT", 4, 0);
+        upButton:SetWidth(16);
+        upButton:SetHeight(16);
+        upButton:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up");
+        upButton:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down");
+        upButton:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Highlight");
+        upButton.priorityIndex = index;
+        upButton:SetScript("OnClick", function()
+            AutoHeal_MovePriorityUp(this.priorityIndex);
+        end);
+
+        -- Highlight if selected
+        if SelectedPriorityIndex == index then
+            item:SetTextColor(0, 1, 0);
+        else
+            item:SetTextColor(1, 1, 1);
+        end
+
+        table.insert(PriorityListItems, {fontString = item, button = button, upButton = upButton, downButton = downButton, removeButton = removeButton});
+        yOffset = yOffset + 18;
+    end
+end
+
 -- Select a preset for editing
 function AutoHeal_SelectPreset(name)
     SelectedPreset = name;
     local preset = AHV.Presets[name];
 
     if preset then
+        -- Initialize missing fields for backward compatibility
+        if not preset.priorityList then
+            preset.priorityList = {};
+        end
+        if preset.priorityMode == nil then
+            preset.priorityMode = false;
+        end
+
         AutoHealConfigFrameCurrentPreset:SetText("Editing: " .. name);
         AutoHealConfigFrameSpellEdit:SetText(preset.spell or "");
         AutoHealConfigFrameHealthEdit:SetText(tostring(preset.healthThreshold or 90));
@@ -776,6 +1024,20 @@ function AutoHeal_SelectPreset(name)
         else
             AutoHealConfigFrameIgnoreBuffCheckCheck:SetChecked(nil);
         end
+
+        -- Load priority mode dropdown
+        UIDropDownMenu_Initialize(AutoHealConfigFramePriorityModeButton, AutoHeal_InitPriorityModeDropdown);
+        if preset.priorityMode then
+            UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "byorder");
+            UIDropDownMenu_SetText("By Order", AutoHealConfigFramePriorityModeButton);
+        else
+            UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "allequal");
+            UIDropDownMenu_SetText("All Equal", AutoHealConfigFramePriorityModeButton);
+        end
+
+        -- Load priority list
+        SelectedPriorityIndex = nil;
+        CreatePriorityList();
 
         -- Update list highlighting
         for _, listItem in pairs(PresetListItems) do
@@ -831,6 +1093,9 @@ function AutoHeal_SavePreset()
     preset.selfPreservationEnabled = (AutoHealConfigFrameSelfPreservationCheck:GetChecked() == 1);
     preset.ignoreBuffCheck = (AutoHealConfigFrameIgnoreBuffCheckCheck:GetChecked() == 1);
 
+    -- Priority mode is saved via dropdown selection
+    -- Priority list is already saved via Add/Remove/Clear functions
+
     -- Get requires buff field
     local requiresBuffText = AutoHealConfigFrameRequiresBuffEdit:GetText();
     preset.requiresBuff = (requiresBuffText and requiresBuffText ~= "") and requiresBuffText or "";
@@ -874,7 +1139,10 @@ function AutoHeal_NewPreset()
                         maxRange = DAHV.PresetDefaults.maxRange,
                         selfPreservationThreshold = DAHV.PresetDefaults.selfPreservationThreshold,
                         selfPreservationEnabled = DAHV.PresetDefaults.selfPreservationEnabled,
-                        requiresBuff = DAHV.PresetDefaults.requiresBuff
+                        requiresBuff = DAHV.PresetDefaults.requiresBuff,
+                        ignoreBuffCheck = DAHV.PresetDefaults.ignoreBuffCheck,
+                        priorityList = {},
+                        priorityMode = DAHV.PresetDefaults.priorityMode
                     };
                     AutoHealVariables.Presets[name] = AHV.Presets[name];
                     CreatePresetList();
@@ -921,6 +1189,228 @@ function AutoHeal_DeletePreset()
         end,
     };
     StaticPopup_Show("AUTOHEAL_DELETE_PRESET");
+end
+
+-- Add current target to priority list
+function AutoHeal_AddTargetToPriorityList()
+    if not SelectedPreset then
+        writeLine("AutoHeal: No preset selected");
+        return;
+    end
+
+    if not UnitExists("target") then
+        writeLine("AutoHeal: No target selected");
+        return;
+    end
+
+    if not UnitIsPlayer("target") then
+        writeLine("AutoHeal: Target is not a player");
+        return;
+    end
+
+    local targetName = UnitName("target");
+    if not targetName then
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset then
+        return;
+    end
+
+    if not preset.priorityList then
+        preset.priorityList = {};
+    end
+
+    -- Check if already in list
+    for _, name in ipairs(preset.priorityList) do
+        if name == targetName then
+            writeLine("AutoHeal: " .. targetName .. " already in priority list");
+            return;
+        end
+    end
+
+    -- Add to list
+    table.insert(preset.priorityList, targetName);
+    AutoHealVariables.Presets[SelectedPreset] = preset;
+    CreatePriorityList();
+    writeLine("AutoHeal: Added " .. targetName .. " to priority list");
+end
+
+-- Remove selected name from priority list
+function AutoHeal_RemoveFromPriorityList(index)
+    if not SelectedPreset then
+        writeLine("AutoHeal: No preset selected");
+        return;
+    end
+
+    -- Accept index parameter, fallback to selected index if not provided
+    if not index then
+        index = SelectedPriorityIndex;
+        if not index then
+            writeLine("AutoHeal: No priority player selected");
+            return;
+        end
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset or not preset.priorityList then
+        return;
+    end
+
+    local removedName = preset.priorityList[index];
+    table.remove(preset.priorityList, index);
+    AutoHealVariables.Presets[SelectedPreset] = preset;
+    SelectedPriorityIndex = nil;
+    CreatePriorityList();
+    writeLine("AutoHeal: Removed " .. removedName .. " from priority list");
+end
+
+-- Clear all priority names
+function AutoHeal_ClearPriorityList()
+    if not SelectedPreset then
+        writeLine("AutoHeal: No preset selected");
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset then
+        return;
+    end
+
+    preset.priorityList = {};
+    AutoHealVariables.Presets[SelectedPreset] = preset;
+    SelectedPriorityIndex = nil;
+    CreatePriorityList();
+    writeLine("AutoHeal: Priority list cleared");
+end
+
+-- Move priority player up in list
+function AutoHeal_MovePriorityUp(index)
+    if not SelectedPreset then
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset or not preset.priorityList then
+        return;
+    end
+
+    -- Can't move first item up
+    if index <= 1 then
+        return;
+    end
+
+    -- Swap with previous item
+    local temp = preset.priorityList[index - 1];
+    preset.priorityList[index - 1] = preset.priorityList[index];
+    preset.priorityList[index] = temp;
+
+    -- Update selected index to follow the moved item
+    if SelectedPriorityIndex == index then
+        SelectedPriorityIndex = index - 1;
+    elseif SelectedPriorityIndex == index - 1 then
+        SelectedPriorityIndex = index;
+    end
+
+    AutoHealVariables.Presets[SelectedPreset] = preset;
+    CreatePriorityList();
+end
+
+-- Move priority player down in list
+function AutoHeal_MovePriorityDown(index)
+    if not SelectedPreset then
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset or not preset.priorityList then
+        return;
+    end
+
+    -- Can't move last item down
+    if index >= table.getn(preset.priorityList) then
+        return;
+    end
+
+    -- Swap with next item
+    local temp = preset.priorityList[index + 1];
+    preset.priorityList[index + 1] = preset.priorityList[index];
+    preset.priorityList[index] = temp;
+
+    -- Update selected index to follow the moved item
+    if SelectedPriorityIndex == index then
+        SelectedPriorityIndex = index + 1;
+    elseif SelectedPriorityIndex == index + 1 then
+        SelectedPriorityIndex = index;
+    end
+
+    AutoHealVariables.Presets[SelectedPreset] = preset;
+    CreatePriorityList();
+end
+
+-- Initialize priority mode dropdown
+function AutoHeal_InitPriorityModeDropdown()
+    if not SelectedPreset then
+        return;
+    end
+
+    local preset = AHV.Presets[SelectedPreset];
+    if not preset then
+        return;
+    end
+
+    local info = {};
+
+    -- Set the dropdown menu width to match visible button area
+    UIDROPDOWNMENU_MENU_WIDTH = 140;
+
+    -- All Equal option
+    info = {};
+    info.text = "All Equal";
+    info.value = "allequal";
+    info.func = function()
+        local p = AHV.Presets[SelectedPreset];
+        if p then
+            p.priorityMode = false;
+            AutoHealVariables.Presets[SelectedPreset] = p;
+            UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "allequal");
+            UIDropDownMenu_SetText("All Equal", AutoHealConfigFramePriorityModeButton);
+        end
+    end;
+    info.checked = nil;
+    info.isNotRadio = nil;
+    info.tooltipTitle = "All Equal";
+    info.tooltipText = "All priority list targets are treated equally and healed based on most -Health%";
+    UIDropDownMenu_AddButton(info);
+
+    -- By Order option
+    info = {};
+    info.text = "By Order";
+    info.value = "byorder";
+    info.func = function()
+        local p = AHV.Presets[SelectedPreset];
+        if p then
+            p.priorityMode = true;
+            AutoHealVariables.Presets[SelectedPreset] = p;
+            UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "byorder");
+            UIDropDownMenu_SetText("By Order", AutoHealConfigFramePriorityModeButton);
+        end
+    end;
+    info.checked = nil;
+    info.isNotRadio = nil;
+    info.tooltipTitle = "By Order";
+    info.tooltipText = "Priority List is healed from top to bottom, if conditions are met for heal.";
+    UIDropDownMenu_AddButton(info);
+
+    -- Set initial display text and selected value
+    if preset.priorityMode then
+        UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "byorder");
+        UIDropDownMenu_SetText("By Order", AutoHealConfigFramePriorityModeButton);
+    else
+        UIDropDownMenu_SetSelectedValue(AutoHealConfigFramePriorityModeButton, "allequal");
+        UIDropDownMenu_SetText("All Equal", AutoHealConfigFramePriorityModeButton);
+    end
 end
 
 -- Config frame OnLoad

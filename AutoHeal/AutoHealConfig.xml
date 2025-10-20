@@ -3,7 +3,7 @@
     <!-- Main Config Frame -->
     <Frame name="AutoHealConfigFrame" parent="UIParent" hidden="true" frameStrata="DIALOG" toplevel="true" enableMouse="true" movable="true">
         <Size>
-            <AbsDimension x="560" y="480"/>
+            <AbsDimension x="720" y="480"/>
         </Size>
         <Anchors>
             <Anchor point="CENTER"/>
@@ -54,36 +54,41 @@
                     </Anchors>
                 </FontString>
 
-                <!-- Config Field Labels (Right Column) -->
+                <!-- Config Field Labels (Right Column) - Vertically centered with inputs -->
                 <FontString name="$parentSpellLabel" inherits="GameFontNormalSmall" text="Spell:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-78"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-84"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentSpellRankLabel" inherits="GameFontNormalSmall" text="Rank:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-113"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-119"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentHealthLabel" inherits="GameFontNormalSmall" text="Health %:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-148"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-154"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentBlockLabel" inherits="GameFontNormalSmall" text="Block Time:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-183"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-189"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentCooldownLabel" inherits="GameFontNormalSmall" text="Cooldown:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-218"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-224"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentRangeLabel" inherits="GameFontNormalSmall" text="Max Range:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-253"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-259"/></Offset></Anchor></Anchors>
                 </FontString>
-                <FontString name="$parentRequiresBuffLabel" inherits="GameFontNormalSmall" text="Requires Buff:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-288"/></Offset></Anchor></Anchors>
+                <FontString name="$parentRequiresBuffLabel" inherits="GameFontNormalSmall" text="Required Buff(s):">
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-294"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentSelfPreservationLabel" inherits="GameFontNormalSmall" text="Emergency:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-330"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-336"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentSelfThresholdLabel" inherits="GameFontNormalSmall" text="Emergency Health%:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-363"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-369"/></Offset></Anchor></Anchors>
                 </FontString>
                 <FontString name="$parentIgnoreBuffCheckLabel" inherits="GameFontNormalSmall" text="Ignore Buff Check:">
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-395"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="200" y="-401"/></Offset></Anchor></Anchors>
+                </FontString>
+
+                <!-- Right Column: Priority List -->
+                <FontString name="$parentPriorityListLabel" inherits="GameFontNormalSmall" text="Priority Players:">
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="560" y="-45"/></Offset></Anchor></Anchors>
                 </FontString>
             </Layer>
         </Layers>
@@ -241,7 +246,7 @@
                     <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
                     <OnEnter>
                         GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
-                        GameTooltip:SetText("Maximum casting range in yards");
+                        GameTooltip:SetText("Maximum casting range in yr.\nFurther away is \"Out of Range\" and not cast.");
                         GameTooltip:Show();
                     </OnEnter>
                     <OnLeave>GameTooltip:Hide();</OnLeave>
@@ -264,7 +269,7 @@
                     <OnEnterPressed>this:ClearFocus();</OnEnterPressed>
                     <OnEnter>
                         GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
-                        GameTooltip:SetText("Required buff on Unit to cast spell (e.g. Rejuvenation/Regrowth for Swiftmend).\n(Leaved empty for normal buffs and spells.)");
+                        GameTooltip:SetText("Required Buff(s) on Unit to cast spell (e.g. Rejuvenation/Regrowth for Swiftmend).\nExample: Rejuvenation,Regrowth (comma-separated)\n(Leave empty for spells that dont need specific buffs on target to be cast.)");
                         GameTooltip:Show();
                     </OnEnter>
                     <OnLeave>GameTooltip:Hide();</OnLeave>
@@ -321,12 +326,62 @@
                 <Scripts>
                     <OnEnter>
                         GameTooltip:SetOwner(this, "ANCHOR_RIGHT");
-                        GameTooltip:SetText("Multiple Spells can have the same Buff Icon. Spell detection is then based on Blacklist Timer, knowing when cast was done until cooldown is over.");
+                        GameTooltip:SetText("Multiple Spells can have the same Buff Icon.\nSpell detection is then based on Blacklist Timer, knowing when cast was done until cooldown is over.");
                         GameTooltip:Show();
                     </OnEnter>
                     <OnLeave>GameTooltip:Hide();</OnLeave>
                 </Scripts>
             </CheckButton>
+
+            <!-- Right Column: Priority List Container -->
+            <Frame name="$parentPriorityListFrame">
+                <Size>
+                    <AbsDimension x="140" y="280"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="560" y="-70"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
+                    <EdgeSize><AbsValue val="16"/></EdgeSize>
+                    <TileSize><AbsValue val="16"/></TileSize>
+                    <BackgroundInsets><AbsInset left="4" right="4" top="4" bottom="4"/></BackgroundInsets>
+                    <Color r="0" g="0" b="0" a="0.8"/>
+                </Backdrop>
+            </Frame>
+
+            <!-- Priority List Mode Dropdown Button -->
+            <Button name="$parentPriorityModeButton" inherits="UIDropDownMenuTemplate">
+                <Size><AbsDimension x="140" y="32"/></Size>
+                <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="545" y="-353"/></Offset></Anchor></Anchors>
+                <Scripts>
+                    <OnLoad>
+                        UIDropDownMenu_Initialize(this, AutoHeal_InitPriorityModeDropdown);
+                        UIDropDownMenu_SetWidth(120, this);
+                        -- Set dropdown menu anchor properties to align popup with button
+                        this.point = "TOPLEFT";
+                        this.relativeTo = this;
+                        this.xOffset = 16;
+                        this.yOffset = 0;
+                    </OnLoad>
+                </Scripts>
+            </Button>
+
+            <!-- Priority List Buttons -->
+            <Button name="$parentPriorityAddButton" inherits="GameMenuButtonTemplate" text="Add Target">
+                <Size><AbsDimension x="60" y="20"/></Size>
+                <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="560" y="-383"/></Offset></Anchor></Anchors>
+                <Scripts><OnClick>AutoHeal_AddTargetToPriorityList();</OnClick></Scripts>
+            </Button>
+
+            <Button name="$parentPriorityClearButton" inherits="GameMenuButtonTemplate" text="Clear">
+                <Size><AbsDimension x="60" y="20"/></Size>
+                <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="640" y="-383"/></Offset></Anchor></Anchors>
+                <Scripts><OnClick>AutoHeal_ClearPriorityList();</OnClick></Scripts>
+            </Button>
 
             <!-- Buttons -->
             <Button name="$parentNewButton" inherits="GameMenuButtonTemplate" text="New">
