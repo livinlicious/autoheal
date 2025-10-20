@@ -5,15 +5,15 @@ Automatic healing addon for Vanilla WoW (Turtle WoW 1.12) with intelligent targe
 ## Features
 
 - **Smart Healing Priority**: Mouseover → Target → Lowest HP party/raid member
-- **Emergency Self-Preservation**: Automatically prioritizes healing yourself when critically low
+- **Emergency Self-Preservation**: Can prioritize healing yourself when critically low
 - **Chained Presets**: Support multiple presets in priority order (e.g., `/autoheal swift reju`)
 - **Consume Spells**: Support for spells that require buffs (e.g., Swiftmend requires Rejuvenation/Regrowth)
 - **Spell Rank Selection**: Choose specific spell ranks or use highest available rank
-- **Blacklist System**: Prevents spam-casting on targets with pending buffs (handles invisible buff problem)
-- **Line of Sight & Range Checking**: Uses pfUI-raiddistance integration for accurate distance/LOS checks
-- **GCD-Based Success Detection**: Reliably tracks cast success without requiring combat log parsing
-- **Preset System**: Configure unlimited healing profiles with graphical UI
-- **Macro-Friendly**: Designed for use in keybind macros with silent operation
+- **Blacklist System**: Prevents spam-casting on targets with buffs over 32 Buffs (handles invisible buff problem)
+- **Line of Sight & Range Checking**: Uses UnitXP integration for accurate distance/LOS checks
+- **GCD-Based Success Detection**: Tracks cast success without requiring combat log parsing
+- **Preset System**: Configure spell presets with graphical UI
+- **Macro-Friendly**: Designed for use in keybind macros
 
 ## Installation
 
@@ -36,20 +36,16 @@ Automatic healing addon for Vanilla WoW (Turtle WoW 1.12) with intelligent targe
 **Single Preset:**
 ```
 /autoheal reju
-/cast Healing Touch
+/autoheal swift reju
+/autoheal Heal1 Heal2 Heal3 Heal4
 ```
 
-**Chained Presets (Swiftmend with Rejuvenation fallback):**
+**Chained Presets (Swiftmend if possible, otherwise Rejuvenation):**
 ```
 /autoheal swift reju
 ```
 
-**Direct Function Call:**
-```
-/script AutoHeal_Cast("reju")
-```
-
-The addon will attempt to heal the most appropriate target. If no valid targets are found (or all out of range/LOS), the macro continues to the next line.
+The addon will attempt to heal the most appropriate target. If no valid targets are found (or all out of range/LOS), the macro continues to the next preset and checks for targets.
 
 ## Configuration
 
@@ -60,11 +56,11 @@ Each preset can be configured with:
 - **Spell Name**: The spell to cast (e.g., "Rejuvenation", "Regrowth", "Swiftmend")
 - **Rank**: Spell rank to use (0 = highest available rank, or specific rank number)
 - **Health Threshold**: Heal targets below this HP% (0-100)
-- **Block Time**: Seconds to wait before re-casting on same target (handles invisible buff delay)
-- **Cooldown**: Spell cooldown in seconds (for spells with cooldowns like Swiftmend)
-- **Max Range**: Maximum range in yards (40 recommended for most spells)
+- **Block Time**: Seconds to wait before re-casting on same target (fixes 32 Buff limit - invisible buffs on target)
+- **Cooldown**: Spell cooldown in seconds (for spells with cooldowns like Swiftmend, or Set Bonus that changes Cooldown for spells)
+- **Max Range**: Maximum range in yards (40 recommended for most heal spells)
 - **Requires Buff**: Required buff on target for consume spells (e.g., "Rejuvenation/Regrowth" for Swiftmend). Leave empty for normal buffs and spells.
-- **Emergency**: Enable emergency self-heal mode
+- **Emergency**: Enable emergency self-heal
 - **Emergency Health%**: HP% at which to prioritize self-healing (0-100)
 
 ## Healing Priority Logic
@@ -75,7 +71,7 @@ Each preset can be configured with:
 2. **Current Target** - Second priority (intentional healing)
 3. **Party/Raid/Self** - Sorted by lowest HP% first
 
-### Emergency Self-Preservation Mode
+### Emergency Self-Preservation
 
 When **Self-Preservation is enabled** and your HP falls below the threshold:
 - **Player (Self)** becomes the ONLY target until HP recovers
@@ -123,7 +119,7 @@ Uses spell slot 154 cooldown as GCD indicator:
 
 ### Range & Line of Sight
 
-Integrates with pfUI's distance checking:
+Integrates with UnitXP distance checking:
 - Uses `UnitXP("distanceBetween", "player", unit)` for precise distance
 - Uses `UnitXP("inSight", "player", unit)` for line of sight checks
 - Skips unreachable targets automatically
@@ -169,12 +165,4 @@ The addon starts with no presets. Use `/autoheal config` to create your first pr
 
 - **Vanilla WoW 1.12** (Turtle WoW)
 - Works with pfUI raid frames
-- Compatible with macro spam-casting
-- No conflicts with other healing addons
-
-## Credits
-
-Based on proven patterns from:
-- **QuickHeal**: Buff detection and target prioritization
-- **AUTO-REJU macro**: Blacklist system and GCD-based success detection
-- **pfUI-raiddistance**: Line of sight and distance checking
+- Compatible with macros
